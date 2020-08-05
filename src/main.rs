@@ -5,8 +5,8 @@ use async_std::stream::StreamExt;
 
 #[derive(Debug)]
 pub struct Layout {
-    id: u32,
-    name: String,
+    pub id: u32,
+    pub name: String,
 }
 
 impl From<(usize, &String)> for Layout {
@@ -17,6 +17,7 @@ impl From<(usize, &String)> for Layout {
 
 pub struct LayoutManager {
     ipc: Connection,
+    ipc2: Connection,
     last_container_id: Option<i64>,
     layout_map: HashMap<i64, Layout>,
 }
@@ -38,6 +39,12 @@ impl LayoutManager {
         Ok(layouts.unwrap())
     }
 
+    pub async fn set_layout(ipc: &mut Connection, layout: &Layout) -> Fallible<()> {
+        let res = ipc.run_command(format!("input \"1:1:AT_Translated_Set_2_keyboard\" xkb_switch_layout {}", layout.id)).await?;
+        dbg!(res);
+        Ok(())
+    }
+
     pub async fn run(mut self) -> Fallible<()> {
         let subs = [
             EventType::Input,
@@ -55,12 +62,23 @@ impl LayoutManager {
                             self.last_container_id = Some(node.container.id);
                             // Change layout by container id.
                             dbg!(&self.last_container_id);
+                            // let res = self.ipc2.run_command("input \"1:1:AT_Translated_Set_2_keyboard\" xkb_switch_layout 1").await?;
+                            let layout = self.layout_map.get(&node.container.id);
+                            match layout {
+                                Some(layout) => Self::set_layout(&mut self.ipc2, layout).await?,
+                                None => ()
+                            }
+                            // Self::set_layout(&mut self.ipc2, self.layout_map.get(&node.container.id).unwrap()).await;
                         },
                         _ => (),
                     }
                 },
                 Event::Input(input) => {
-                    dbg!(input);
+                    dbg!(&input);
+                    let name = &input.input.xkb_active_layout_name.as_ref().unwrap();
+                    let layout_id = input.input.xkb_layout_names.iter().position(|layout| &layout == name).unwrap();
+                    dbg!(layout_id);
+                    self.layout_map.insert(self.last_container_id.unwrap_or_default(), Layout::from((layout_id, *name)));
                     // Add match by change => XkbLayout
                     // Update layout for last_container_id
                 }
@@ -71,60 +89,16 @@ impl LayoutManager {
     }
 }
 
+// On start app should fill layout_map with current layout for app applications.
+
 #[async_std::main]
 async fn main() -> Fallible<()> {
     let connection = Connection::new().await?;
+    let connection2 = Connection::new().await?;
 
-    let mut manager = LayoutManager { ipc: connection, last_container_id: None, layout_map: HashMap::new() };
+    let mut manager = LayoutManager { ipc: connection, ipc2: connection2, last_container_id: None, layout_map: HashMap::new() };
     dbg!(manager.layouts("1:1:AT_Translated_Set_2_keyboard".to_owned()).await?);
 
     manager.run().await?;
-
-    // let inputs = manager.ipc.get_inputs().await?;
-    // let layouts = inputs
-        // .iter()
-        // .filter(|input| input.input_type == "keyboard" && input.vendor == 1)
-        // .map(|input| {
-            // dbg!(&input);
-            // input
-                // .xkb_layout_names
-                // .iter()
-                // .map(move |layout_name| {
-                    // (
-                        // Layout::from((42, layout_name)),
-                        // input
-                            // .xkb_active_layout_name
-                            // .as_ref()
-                            // .map(|active_layout| active_layout == layout_name)
-                            // .unwrap_or_default(),
-                    // )
-                // })
-                // .collect::<Vec<_>>()
-        // })
-        // .flatten()
-        // .collect::<Vec<_>>();
-    // // dbg!(&layouts);
-    // let active_layout = layouts
-        // .iter()
-        // .enumerate()
-        // .find(|(_, layout)| layout.1)
-        // .map(|(id, _)| id)
-        // .unwrap_or_default();
-    // let layouts = layouts
-        // .into_iter()
-        // .map(|(layout, _)| layout)
-        // .collect::<Vec<_>>();
-    // println!("Layout: {:?}", &layouts[active_layout]);
-
-    // let subs = [
-        // EventType::Input,
-        // EventType::Window,
-    // ];
-
-    // let mut events = manager.ipc.subscribe(&subs).await?;
-    // while let event = events.next().await {
-        // println!("{:#?}\n", event?)
-    // }
-
     Ok(())
 }
