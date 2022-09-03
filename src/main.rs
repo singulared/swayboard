@@ -6,8 +6,6 @@ use swayboard::{
 use tracing::Level;
 use anyhow::{Result, Context};
 
-// On start app should fill layout_map with current layout for app applications.
-
 #[tokio::main]
 async fn main() -> Result<()> {
     let subscriber = tracing_subscriber::fmt()
