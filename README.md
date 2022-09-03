@@ -9,3 +9,4 @@ Sway keyboard's layout daemon.
 - [ ] Systemd unit
 - [ ] Track layout changes and execute IPC commands only its nessesery
 - [ ] Support multiple keyboards
+- [ ] Another WM integration support
