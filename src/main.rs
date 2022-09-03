@@ -3,7 +3,7 @@ use swayboard::{
     cli::{Commands, LayoutSubcommands},
     Cli, LayoutManager,
 };
-use tracing::{info, Level};
+use tracing::Level;
 use anyhow::{Result, Context};
 
 // On start app should fill layout_map with current layout for app applications.

@@ -1,9 +1,9 @@
 use std::collections::HashMap;
 
 use futures_util::stream::StreamExt;
-use swayipc_async::{Connection, EventType, Fallible, InputEvent, Node};
+use swayipc_async::{Connection, EventType, InputEvent, Node};
 use swayipc_types::{Event, WindowChange};
-use tracing::{debug, info, info_span, trace, Instrument};
+use tracing::debug;
 
 use crate::{Error, Layout};
 
@@ -74,8 +74,8 @@ impl LayoutManager {
             .await?
             .into_iter()
             .find(|input| input.input_type == "keyboard" && input.identifier == self.device)
-            .map(|input| Layout::try_from(input))
-            .ok_or_else(|| Error::DeviceNotFound)?
+            .map(Layout::try_from)
+            .ok_or(Error::DeviceNotFound)?
             .map_err(Error::from)
     }
 
@@ -90,14 +90,16 @@ impl LayoutManager {
     }
 
     async fn handle_event(&mut self, event: &Event) -> Result<(), Error> {
-        Ok(match event {
-            Event::Window(window_event) => match window_event.change {
-                WindowChange::Focus => self.handle_focus_change(&window_event.container).await?,
-                _ => (),
-            },
-            Event::Input(input) => self.handle_input_event(&input).await?,
+        match event {
+            Event::Window(window_event) => {
+                if window_event.change == WindowChange::Focus {
+                    self.handle_focus_change(&window_event.container).await?
+                }
+            }
+            Event::Input(input) => self.handle_input_event(input).await?,
             _ => (),
-        })
+        };
+        Ok(())
     }
 
     async fn handle_input_event(&mut self, event: &InputEvent) -> Result<(), Error> {
@@ -127,15 +129,16 @@ impl LayoutManager {
 }
 
 #[derive(Default)]
-pub enum NewWindowLayoutPolicy {
-    DefaultLayout,
+pub enum LayoutPolicy {
+    Default,
     #[default]
-    PreviousLayout,
+    Previous,
 }
 
+#[derive(Default)]
 pub struct LayoutManagerBuilder {
     devices: Option<Vec<String>>,
-    new_window_layout_policy: NewWindowLayoutPolicy,
+    window_layout_policy: LayoutPolicy,
 }
 
 impl LayoutManagerBuilder {
@@ -145,7 +148,7 @@ impl LayoutManagerBuilder {
 
     pub fn devices(self, devices: &[String]) -> Self {
         Self {
-            devices: Some(devices.iter().cloned().collect::<Vec<_>>()),
+            devices: Some(devices.to_vec()),
             ..self
         }
     }
@@ -159,23 +162,14 @@ impl LayoutManagerBuilder {
         Self { devices, ..self }
     }
 
-    pub fn new_window_layout_policy(self, policy: NewWindowLayoutPolicy) -> Self {
+    pub fn layout_policy(self, policy: LayoutPolicy) -> Self {
         Self {
-            new_window_layout_policy: policy,
+            window_layout_policy: policy,
             ..self
         }
     }
 
     pub async fn build(self) -> Result<LayoutManager, Error> {
         LayoutManager::new(self.devices.unwrap().first().unwrap().to_owned()).await
-    }
-}
-
-impl Default for LayoutManagerBuilder {
-    fn default() -> Self {
-        LayoutManagerBuilder {
-            devices: None,
-            new_window_layout_policy: NewWindowLayoutPolicy::default(),
-        }
     }
 }
