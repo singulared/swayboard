@@ -5,7 +5,7 @@ use clap::{Parser, Subcommand};
 pub struct Cli {
     #[clap(subcommand)]
     pub command: Commands,
-    #[clap(long("device"), short, value_name("DEVICE"), multiple_values(true))]
+    #[clap(long("device"), short, value_name("DEVICE"), num_args(1..))]
     pub devices: Option<Vec<String>>,
 }
 
