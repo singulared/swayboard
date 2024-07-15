@@ -3,9 +3,9 @@ use std::collections::HashMap;
 use futures_util::stream::StreamExt;
 use swayipc_async::{Connection, EventType, InputEvent, Node};
 use swayipc_types::{Event, WindowChange};
-use tracing::debug;
+use tracing::{debug, warn};
 
-use crate::{Error, Layout};
+use crate::{layout::Layout, Error, LayoutError};
 
 pub struct LayoutManager {
     last_container_id: Option<i64>,
@@ -15,7 +15,7 @@ pub struct LayoutManager {
 }
 
 impl LayoutManager {
-    pub async fn new(device: String) -> Result<Self, Error> {
+    pub(crate) async fn new(device: String) -> Result<Self, Error> {
         Ok(LayoutManager {
             device,
             last_container_id: None,
@@ -24,7 +24,7 @@ impl LayoutManager {
         })
     }
 
-    pub async fn keyboards(&mut self) -> Result<Vec<String>, Error> {
+    pub(crate) async fn keyboards(&mut self) -> Result<Vec<String>, Error> {
         debug!("Retrieve keyboards list");
         let devices = self
             .ipc
@@ -37,7 +37,7 @@ impl LayoutManager {
         Ok(devices)
     }
 
-    pub async fn layouts(&mut self) -> Result<Vec<Layout>, Error> {
+    pub(crate) async fn layouts(&mut self) -> Result<Vec<Layout>, Error> {
         debug!("Get layouts list");
         let layouts = self
             .ipc
@@ -56,7 +56,7 @@ impl LayoutManager {
         Ok(layouts.unwrap_or_default())
     }
 
-    pub async fn set_layout(&mut self, layout: &Layout) -> Result<(), Error> {
+    pub(crate) async fn set_layout(&mut self, layout: &Layout) -> Result<(), Error> {
         debug!("Change layout to {}", layout.name);
         self.ipc
             .run_command(format!(
@@ -67,7 +67,7 @@ impl LayoutManager {
         Ok(())
     }
 
-    pub async fn get_layout(&mut self) -> Result<Layout, Error> {
+    pub(crate) async fn get_layout(&mut self) -> Result<Layout, Error> {
         debug!("Get current layout");
         self.ipc
             .get_inputs()
@@ -79,12 +79,15 @@ impl LayoutManager {
             .map_err(Error::from)
     }
 
-    pub async fn run(mut self) -> Result<(), Error> {
+    pub(crate) async fn run(mut self) -> Result<(), Error> {
         let subscribe = [EventType::Input, EventType::Window];
         let connection = Connection::new().await?;
         let mut events = connection.subscribe(subscribe).await?;
         while let Some(event) = events.next().await {
-            self.handle_event(&event?).await?;
+            match self.handle_event(&event?).await {
+                Ok(_) => (),
+                Err(error) => warn!("handle event error: {error}"),
+            };
         }
         Ok(())
     }
@@ -103,13 +106,17 @@ impl LayoutManager {
     }
 
     async fn handle_input_event(&mut self, event: &InputEvent) -> Result<(), Error> {
-        let name = event.input.xkb_active_layout_name.as_ref().unwrap();
+        let name = event.input.xkb_active_layout_name.as_ref().ok_or_else(|| {
+            LayoutError::LayoutDetection("Unable to detect current active layout".to_owned())
+        })?;
         let layout_id = event
             .input
             .xkb_layout_names
             .iter()
             .position(|layout| layout == name)
-            .unwrap();
+            .ok_or_else(|| {
+                LayoutError::LayoutDetection("unable to find layout {name}".to_owned())
+            })?;
         self.containers_layout.insert(
             self.last_container_id.unwrap_or_default(),
             Layout::from((layout_id, name)),
@@ -122,38 +129,41 @@ impl LayoutManager {
         let preferred_layout = self.containers_layout.get(&node.id);
         match preferred_layout {
             Some(layout) => self.set_layout(&layout.clone()).await?,
-            None => (),
+            None => {
+                let layout = self.get_layout().await?;
+                self.containers_layout.insert(node.id, layout);
+            }
         };
         Ok(())
     }
 }
 
 #[derive(Default)]
-pub enum LayoutPolicy {
+pub(crate) enum LayoutPolicy {
     Default,
     #[default]
     Previous,
 }
 
 #[derive(Default)]
-pub struct LayoutManagerBuilder {
+pub(crate) struct LayoutManagerBuilder {
     devices: Option<Vec<String>>,
-    window_layout_policy: LayoutPolicy,
+    _window_layout_policy: LayoutPolicy,
 }
 
 impl LayoutManagerBuilder {
-    pub fn new() -> Self {
+    pub(crate) fn new() -> Self {
         Self::default()
     }
 
-    pub fn devices(self, devices: &[String]) -> Self {
+    pub(crate) fn devices(self, devices: &[String]) -> Self {
         Self {
             devices: Some(devices.to_vec()),
             ..self
         }
     }
 
-    pub fn device(self, device: String) -> Self {
+    pub(crate) fn device(self, device: String) -> Self {
         let mut devices = self.devices.clone();
         devices.as_mut().map(|devices| {
             devices.push(device);
@@ -162,14 +172,14 @@ impl LayoutManagerBuilder {
         Self { devices, ..self }
     }
 
-    pub fn layout_policy(self, policy: LayoutPolicy) -> Self {
+    pub(crate) fn layout_policy(self, policy: LayoutPolicy) -> Self {
         Self {
-            window_layout_policy: policy,
+            _window_layout_policy: policy,
             ..self
         }
     }
 
-    pub async fn build(self) -> Result<LayoutManager, Error> {
+    pub(crate) async fn build(self) -> Result<LayoutManager, Error> {
         LayoutManager::new(self.devices.unwrap().first().unwrap().to_owned()).await
     }
 }

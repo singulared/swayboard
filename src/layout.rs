@@ -2,9 +2,9 @@ use swayipc_async::Input;
 use thiserror::Error;
 
 #[derive(Debug, PartialEq, Eq, Clone)]
-pub struct Layout {
-    pub id: usize,
-    pub name: String,
+pub(crate) struct Layout {
+    pub(crate) id: usize,
+    pub(crate) name: String,
 }
 
 impl From<(usize, &String)> for Layout {

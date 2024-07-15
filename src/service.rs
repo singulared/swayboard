@@ -5,7 +5,7 @@ use crate::{
     cli::{Commands, LayoutSubcommands},
     config::Config,
     logging::init_logging,
-    LayoutManager,
+    manager::LayoutManager,
 };
 
 pub struct Service {

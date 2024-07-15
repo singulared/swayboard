@@ -11,7 +11,7 @@ swayipc-async = "2"
 swayipc-types = "1"
 tokio = { version = "1", features = ["rt-multi-thread", "macros"] }
 futures-util = "0.3"
-tracing = "0.1"
+tracing = { version = "0.1", features = ["attributes"] }
 tracing-subscriber = "0.3"
 clap = { version = "4", features = ["derive"] }
 anyhow = "1"
@@ -21,3 +21,5 @@ config = { version = "0.14", features = [
     "toml",
     "yaml",
 ], default-features = false }
+serde = { version = "1", features = ["derive"] }
+dirs = "5"
