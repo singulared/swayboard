@@ -3,12 +3,13 @@ use std::collections::HashMap;
 use futures_util::stream::StreamExt;
 use swayipc_async::{Connection, EventType, InputEvent, Node};
 use swayipc_types::{Event, WindowChange};
-use tracing::{debug, warn};
+use tracing::{debug, trace, warn};
 
 use crate::{layout::Layout, Error, LayoutError};
 
 pub struct LayoutManager {
     last_container_id: Option<i64>,
+    current_layout: Option<Layout>,
     containers_layout: HashMap<i64, Layout>,
     device: String,
     ipc: Connection,
@@ -19,13 +20,14 @@ impl LayoutManager {
         Ok(LayoutManager {
             device,
             last_container_id: None,
+            current_layout: None,
             containers_layout: HashMap::new(),
             ipc: Connection::new().await?,
         })
     }
 
     pub(crate) async fn keyboards(&mut self) -> Result<Vec<String>, Error> {
-        debug!("Retrieve keyboards list");
+        debug!("retrieve keyboards list");
         let devices = self
             .ipc
             .get_inputs()
@@ -38,7 +40,7 @@ impl LayoutManager {
     }
 
     pub(crate) async fn layouts(&mut self) -> Result<Vec<Layout>, Error> {
-        debug!("Get layouts list");
+        debug!("get layouts list");
         let layouts = self
             .ipc
             .get_inputs()
@@ -57,7 +59,7 @@ impl LayoutManager {
     }
 
     pub(crate) async fn set_layout(&mut self, layout: &Layout) -> Result<(), Error> {
-        debug!("Change layout to {}", layout.name);
+        debug!("change layout to {}", layout.name);
         self.ipc
             .run_command(format!(
                 "input \"{}\" xkb_switch_layout {}",
@@ -68,19 +70,26 @@ impl LayoutManager {
     }
 
     pub(crate) async fn get_layout(&mut self) -> Result<Layout, Error> {
-        debug!("Get current layout");
-        self.ipc
-            .get_inputs()
-            .await?
-            .into_iter()
-            .find(|input| input.input_type == "keyboard" && input.identifier == self.device)
-            .map(Layout::try_from)
-            .ok_or(Error::DeviceNotFound)?
-            .map_err(Error::from)
+        trace!("get current layout");
+        match &self.current_layout {
+            None => {
+                debug!("get current layout by IPC");
+                self.ipc
+                    .get_inputs()
+                    .await?
+                    .into_iter()
+                    .find(|input| input.input_type == "keyboard" && input.identifier == self.device)
+                    .map(Layout::try_from)
+                    .ok_or(Error::DeviceNotFound)?
+                    .map_err(Error::from)
+            }
+            Some(layout) => Ok(layout.clone()),
+        }
     }
 
     pub(crate) async fn run(mut self) -> Result<(), Error> {
         let subscribe = [EventType::Input, EventType::Window];
+        self.current_layout = self.get_layout().await.ok();
         let connection = Connection::new().await?;
         let mut events = connection.subscribe(subscribe).await?;
         while let Some(event) = events.next().await {
@@ -117,10 +126,12 @@ impl LayoutManager {
             .ok_or_else(|| {
                 LayoutError::LayoutDetection("unable to find layout {name}".to_owned())
             })?;
-        self.containers_layout.insert(
-            self.last_container_id.unwrap_or_default(),
-            Layout::from((layout_id, name)),
-        );
+        let layout = Layout::from((layout_id, name));
+        if self.current_layout.as_ref() != Some(&layout) {
+            self.current_layout = Some(layout.clone())
+        }
+        self.containers_layout
+            .insert(self.last_container_id.unwrap_or_default(), layout);
         Ok(())
     }
 
@@ -128,7 +139,11 @@ impl LayoutManager {
         self.last_container_id = Some(node.id);
         let preferred_layout = self.containers_layout.get(&node.id);
         match preferred_layout {
-            Some(layout) => self.set_layout(&layout.clone()).await?,
+            Some(layout) => {
+                if Some(layout) != self.current_layout.as_ref() {
+                    self.set_layout(&layout.clone()).await?
+                }
+            }
             None => {
                 let layout = self.get_layout().await?;
                 self.containers_layout.insert(node.id, layout);
