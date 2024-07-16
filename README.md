@@ -1,6 +1,7 @@
 # Swayboard
 
 Sway keyboard's layout daemon.
+This utility helps you automatically change a keyboard layout based on per-window policy.
 
 ## Installation
 ```bash
