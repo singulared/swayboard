@@ -1,5 +1,6 @@
 use anyhow::{Context, Result};
-use tracing::{info, instrument};
+use tracing::info;
+use tracing_appender::non_blocking::WorkerGuard;
 
 use crate::{
     cli::{Commands, LayoutSubcommands},
@@ -11,23 +12,29 @@ use crate::{
 pub struct Service {
     _config: Config,
     manager: LayoutManager,
+    _logging_guard: WorkerGuard,
 }
 
 impl Service {
     pub async fn init() -> Result<Self> {
         let config = Config::new()?;
-        init_logging(&config.logging).await;
-        let manager = LayoutManager::new("1:1:AT_Translated_Set_2_keyboard".to_owned()).await?;
+        let logging_guard = init_logging(&config.logging).await;
+        let dev = config
+            .device
+            .as_ref()
+            .map(|dev| dev.identifier.clone())
+            .unwrap_or_else(|| "*".to_owned());
+        info!("configured device: {dev}");
+        let manager = LayoutManager::new(dev, None).await?;
         let service = Service {
             _config: config,
             manager,
+            _logging_guard: logging_guard,
         };
-        info!("logging initialized");
         info!("service initialized");
         Ok(service)
     }
 
-    #[instrument(name = "cli", skip(self))]
     pub async fn execute(mut self, command: &Commands) -> Result<()> {
         info!("execute CMD {command:?}");
 

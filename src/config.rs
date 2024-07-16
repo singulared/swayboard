@@ -1,11 +1,11 @@
 use config::{ConfigError, Environment, File};
 use dirs::home_dir;
 use serde::Deserialize;
-use tracing::Level;
 
 #[derive(Deserialize, Debug, Default)]
 pub(crate) struct Config {
     pub(crate) logging: Logging,
+    pub(crate) device: Option<Device>,
 }
 
 impl Config {
@@ -27,6 +27,11 @@ impl Config {
 }
 
 #[derive(Deserialize, Debug, Default)]
+pub(crate) struct Device {
+    pub(crate) identifier: String,
+}
+
+#[derive(Deserialize, Debug, Default)]
 pub struct Logging {
     pub(crate) level: LoggingLevel,
 }
@@ -42,13 +47,13 @@ pub(crate) enum LoggingLevel {
 }
 
 impl LoggingLevel {
-    pub(crate) fn to_tracing_level(&self) -> Level {
+    pub fn as_str(&self) -> &str {
         match self {
-            LoggingLevel::Error => Level::ERROR,
-            LoggingLevel::Warn => Level::WARN,
-            LoggingLevel::Info => Level::INFO,
-            LoggingLevel::Debug => Level::DEBUG,
-            LoggingLevel::Trace => Level::TRACE,
+            LoggingLevel::Error => "error",
+            LoggingLevel::Warn => "warn",
+            LoggingLevel::Info => "info",
+            LoggingLevel::Debug => "debug",
+            LoggingLevel::Trace => "trace",
         }
     }
 }

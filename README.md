@@ -2,11 +2,30 @@
 
 Sway keyboard's layout daemon.
 
-## Roadmap
-- [ ] Configuration
-- [ ] New window layout select policy
-- [ ] Demonize
-- [ ] Systemd unit
-- [ ] Track layout changes and execute IPC commands only its necessary
-- [ ] Support multiple keyboards
-- [ ] Another WM integration support
+## Installation
+```bash
+cargo install swayboard
+```
+Then you can add swayboard to your sway config:
+```
+exec swayboard
+```
+
+## Configuration
+
+Swayboard supports next configuration locations 
+ - `/etc/swayboard/config.toml` 
+ - `~/.config/swayboard/config.toml`
+
+```toml
+[logging]
+level = "Info"
+
+[device]
+identifier = "1:1:AT_Translated_Set_2_keyboard"
+```
+
+Your device identifier you can check with swaymsg
+```bash
+swaymsg -t get_inputs -r | jq '.[] | select(.type | contains("keyboard")).identifier'
+```

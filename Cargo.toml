@@ -9,11 +9,20 @@ edition = "2021"
 [dependencies]
 swayipc-async = "2"
 swayipc-types = "1"
-tokio = { version = "1", features = ["rt-multi-thread", "macros"] }
-futures-util = "0.3"
-tracing = { version = "0.1", features = ["attributes"] }
-tracing-subscriber = "0.3"
-clap = { version = "4", features = ["derive"] }
+tokio = { version = "1", features = [
+    "rt-multi-thread",
+    "macros",
+], default-features = false }
+futures-util = { version = "0.3", default-features = false }
+tracing = { version = "0.1", features = [
+    "attributes",
+], default-features = false }
+tracing-subscriber = { version = "0.3", features = [
+    "env-filter",
+    "tracing-log",
+] }
+tracing-appender = { version = "0.2", default-features = false }
+clap = { version = "4", features = ["derive", "std"], default-features = false }
 anyhow = "1"
 thiserror = "1"
 config = { version = "0.14", features = [
@@ -21,5 +30,5 @@ config = { version = "0.14", features = [
     "toml",
     "yaml",
 ], default-features = false }
-serde = { version = "1", features = ["derive"] }
+serde = { version = "1", features = ["derive"], default-features = false }
 dirs = "5"

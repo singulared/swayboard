@@ -8,21 +8,23 @@ use tracing::{debug, trace, warn};
 use crate::{layout::Layout, Error, LayoutError};
 
 pub struct LayoutManager {
-    last_container_id: Option<i64>,
+    current_container_id: Option<i64>,
     current_layout: Option<Layout>,
     containers_layout: HashMap<i64, Layout>,
     device: String,
     ipc: Connection,
+    _policy: LayoutPolicy,
 }
 
 impl LayoutManager {
-    pub(crate) async fn new(device: String) -> Result<Self, Error> {
+    pub(crate) async fn new(device: String, policy: Option<LayoutPolicy>) -> Result<Self, Error> {
         Ok(LayoutManager {
             device,
-            last_container_id: None,
+            current_container_id: None,
             current_layout: None,
             containers_layout: HashMap::new(),
             ipc: Connection::new().await?,
+            _policy: policy.unwrap_or_default(),
         })
     }
 
@@ -60,17 +62,19 @@ impl LayoutManager {
 
     pub(crate) async fn set_layout(&mut self, layout: &Layout) -> Result<(), Error> {
         debug!("change layout to {}", layout.name);
-        self.ipc
-            .run_command(format!(
-                "input \"{}\" xkb_switch_layout {}",
-                self.device, layout.id
-            ))
-            .await?;
+        if self.current_layout.as_ref() != Some(layout) {
+            self.ipc
+                .run_command(format!(
+                    "input \"{}\" xkb_switch_layout {}",
+                    self.device, layout.id
+                ))
+                .await?;
+        }
         Ok(())
     }
 
     pub(crate) async fn get_layout(&mut self) -> Result<Layout, Error> {
-        trace!("get current layout");
+        debug!("get current layout");
         match &self.current_layout {
             None => {
                 debug!("get current layout by IPC");
@@ -107,6 +111,9 @@ impl LayoutManager {
                 if window_event.change == WindowChange::Focus {
                     self.handle_focus_change(&window_event.container).await?
                 }
+                if window_event.change == WindowChange::Close {
+                    self.handle_window_close(&window_event.container).await?
+                }
             }
             Event::Input(input) => self.handle_input_event(input).await?,
             _ => (),
@@ -115,6 +122,8 @@ impl LayoutManager {
     }
 
     async fn handle_input_event(&mut self, event: &InputEvent) -> Result<(), Error> {
+        debug!("handle input event");
+        trace!("{event:#?}");
         let name = event.input.xkb_active_layout_name.as_ref().ok_or_else(|| {
             LayoutError::LayoutDetection("Unable to detect current active layout".to_owned())
         })?;
@@ -130,13 +139,25 @@ impl LayoutManager {
         if self.current_layout.as_ref() != Some(&layout) {
             self.current_layout = Some(layout.clone())
         }
-        self.containers_layout
-            .insert(self.last_container_id.unwrap_or_default(), layout);
+        if let Some(current_container) = self.current_container_id {
+            debug!(
+                "update current container layout {} {}",
+                current_container, layout.name
+            );
+            self.containers_layout.insert(current_container, layout);
+        }
+        Ok(())
+    }
+
+    async fn handle_window_close(&mut self, node: &Node) -> Result<(), Error> {
+        debug!("handle window close event");
+        self.containers_layout.remove(&node.id);
         Ok(())
     }
 
     async fn handle_focus_change(&mut self, node: &Node) -> Result<(), Error> {
-        self.last_container_id = Some(node.id);
+        debug!("handle focus change");
+        self.current_container_id = Some(node.id);
         let preferred_layout = self.containers_layout.get(&node.id);
         match preferred_layout {
             Some(layout) => {
@@ -146,6 +167,7 @@ impl LayoutManager {
             }
             None => {
                 let layout = self.get_layout().await?;
+                debug!("save container layout {} {}", node.id, layout.name);
                 self.containers_layout.insert(node.id, layout);
             }
         };
@@ -155,46 +177,47 @@ impl LayoutManager {
 
 #[derive(Default)]
 pub(crate) enum LayoutPolicy {
-    Default,
+    #[allow(dead_code)]
+    Default(String),
     #[default]
     Previous,
 }
 
-#[derive(Default)]
-pub(crate) struct LayoutManagerBuilder {
-    devices: Option<Vec<String>>,
-    _window_layout_policy: LayoutPolicy,
-}
-
-impl LayoutManagerBuilder {
-    pub(crate) fn new() -> Self {
-        Self::default()
-    }
-
-    pub(crate) fn devices(self, devices: &[String]) -> Self {
-        Self {
-            devices: Some(devices.to_vec()),
-            ..self
-        }
-    }
-
-    pub(crate) fn device(self, device: String) -> Self {
-        let mut devices = self.devices.clone();
-        devices.as_mut().map(|devices| {
-            devices.push(device);
-            devices
-        });
-        Self { devices, ..self }
-    }
-
-    pub(crate) fn layout_policy(self, policy: LayoutPolicy) -> Self {
-        Self {
-            _window_layout_policy: policy,
-            ..self
-        }
-    }
-
-    pub(crate) async fn build(self) -> Result<LayoutManager, Error> {
-        LayoutManager::new(self.devices.unwrap().first().unwrap().to_owned()).await
-    }
-}
+// #[derive(Default)]
+// pub(crate) struct LayoutManagerBuilder {
+//     devices: Option<Vec<String>>,
+//     _window_layout_policy: LayoutPolicy,
+// }
+//
+// impl LayoutManagerBuilder {
+//     pub(crate) fn new() -> Self {
+//         Self::default()
+//     }
+//
+//     pub(crate) fn devices(self, devices: &[String]) -> Self {
+//         Self {
+//             devices: Some(devices.to_vec()),
+//             ..self
+//         }
+//     }
+//
+//     pub(crate) fn device(self, device: String) -> Self {
+//         let mut devices = self.devices.clone();
+//         devices.as_mut().map(|devices| {
+//             devices.push(device);
+//             devices
+//         });
+//         Self { devices, ..self }
+//     }
+//
+//     pub(crate) fn layout_policy(self, policy: LayoutPolicy) -> Self {
+//         Self {
+//             _window_layout_policy: policy,
+//             ..self
+//         }
+//     }
+//
+//     pub(crate) async fn build(self) -> Result<LayoutManager, Error> {
+//         LayoutManager::new(self.devices.unwrap().first().unwrap().to_owned()).await
+//     }
+// }
