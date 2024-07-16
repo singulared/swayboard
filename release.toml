@@ -1,0 +1,15 @@
+sign-commit = true
+sign-tag = true
+pre-release-commit-message = "Release {{crate_name}} {{version}} 🎉"
+tag-message = "Release {{crate_name}} {{prefix}}{{version}}"
+tag-prefix = ""
+tag-name = "{{prefix}}{{version}}"
+
+pre-release-hook = [
+    "git",
+    "cliff",
+    "-o",
+    "CHANGELOG.md",
+    "--tag",
+    "{{version}}",
+]
