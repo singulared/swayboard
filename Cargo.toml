@@ -2,7 +2,7 @@
 name = "swayboard"
 version = "0.1.0"
 authors = ["Belousov Max <mail@singulared.space>"]
-edition = "2021"
+edition = "2024"
 
 description = "Automatic keyboard layout manager for Sway wm"
 keywords = ["sway", "keyboard", "layout"]
@@ -32,11 +32,11 @@ tracing-subscriber = { version = "0.3", features = [
 tracing-appender = { version = "0.2", default-features = false }
 clap = { version = "4", features = ["derive", "std"], default-features = false }
 anyhow = "1"
-thiserror = "1"
-config = { version = "0.14", features = [
+thiserror = "2"
+config = { version = "0.15", features = [
     "json",
     "toml",
     "yaml",
 ], default-features = false }
 serde = { version = "1", features = ["derive"], default-features = false }
-dirs = "5"
+dirs = "6"
